@@ -208,7 +208,23 @@ class ChatProvider extends ChangeNotifier {
           .map((m) => {'role': m['role'], 'content': m['content']})
           .toList();
 
-      final rawResponse = await _aiService.sendMessage(history, text, base64Image, token: token);
+      final result = await _aiService.sendMessage(
+        history, 
+        text, 
+        base64Image, 
+        sessionId: _currentSessionId,
+        token: token
+      );
+      
+      final rawResponse = result['response'] as String;
+      final serverSessionId = result['session_id'] as int;
+
+      // 如果服务器返回了新的 SessionID (比如刚开始是0，服务器分配了ID)，同步它
+      if (_currentSessionId != serverSessionId) {
+        _currentSessionId = serverSessionId;
+        notifyListeners();
+      }
+
       final transferData = _aiService.extractHumanTransferData(rawResponse);
       if (transferData != null) {
         _isTransferred = true;
@@ -755,7 +771,7 @@ class _DesktopMainScreenState extends State<DesktopMainScreen> {
                                       child: Image.file(File(msg['image']), height: 200, fit: BoxFit.cover),
                                     ),
                                   ),
-                                SelectableText(msg['content'], style: const TextStyle(height: 1.5)),
+                                RichTextRenderer(text: msg['content'], isUser: isUser),
                               ],
                             ),
                           ),
@@ -857,6 +873,45 @@ class FormStatusPanel extends StatelessWidget {
           const SizedBox(height: 4),
           Text(value ?? "待完善...", style: TextStyle(color: value == null ? Colors.grey : Colors.black, fontWeight: FontWeight.w500)),
         ],
+      ),
+    );
+  }
+}
+
+class RichTextRenderer extends StatelessWidget {
+  final String text;
+  final bool isUser;
+  const RichTextRenderer({super.key, required this.text, required this.isUser});
+
+  @override
+  Widget build(BuildContext context) {
+    List<TextSpan> spans = [];
+    final regExp = RegExp(r'<b>(.*?)</b>', dotAll: true);
+    int lastMatchEnd = 0;
+
+    for (var match in regExp.allMatches(text)) {
+      if (match.start > lastMatchEnd) {
+        spans.add(TextSpan(text: text.substring(lastMatchEnd, match.start)));
+      }
+      spans.add(TextSpan(
+        text: match.group(1),
+        style: const TextStyle(fontWeight: FontWeight.bold),
+      ));
+      lastMatchEnd = match.end;
+    }
+
+    if (lastMatchEnd < text.length) {
+      spans.add(TextSpan(text: text.substring(lastMatchEnd)));
+    }
+
+    return SelectableText.rich(
+      TextSpan(
+        style: const TextStyle(
+          color: Colors.black87,
+          fontSize: 14,
+          height: 1.5,
+        ),
+        children: spans,
       ),
     );
   }

@@ -10,9 +10,9 @@ class AIService {
 
   // System Prompt 现在由服务器端管理，客户端不需要知道
 
-  Future<String> sendMessage(List<Map<String, dynamic>> history,
+  Future<Map<String, dynamic>> sendMessage(List<Map<String, dynamic>> history,
       String userMessage, String? base64Image,
-      {String? token}) async {
+      {int? sessionId, String? token}) async {
     final headers = {
       'Content-Type': 'application/json',
     };
@@ -21,18 +21,12 @@ class AIService {
       headers['Authorization'] = 'Bearer $token';
     }
 
-    // 构建符合 Python 服务器 ChatRequest 模型的请求体
-    // class ChatRequest(BaseModel):
-    //    session_id: Optional[int] = None
-    //    message: str
-    //    history: List[Dict[str, Any]] = []
-    //    base64_image: Optional[str] = None
-
     final body = {
+      'session_id': sessionId,
       'message': userMessage,
       'history': history,
       'base64_image': base64Image,
-      'source': 'app', // 明确标识请求来自 App 端
+      'source': 'app',
     };
 
     try {
@@ -45,7 +39,10 @@ class AIService {
       if (response.statusCode == 200) {
         // 服务器返回格式: {"response": "...", "session_id": 123}
         final data = jsonDecode(utf8.decode(response.bodyBytes));
-        return data['response'];
+        return {
+          'response': data['response'],
+          'session_id': data['session_id'],
+        };
       } else if (response.statusCode == 401) {
         throw Exception('认证失效，请重新登录');
       } else {
